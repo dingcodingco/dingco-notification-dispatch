@@ -1,0 +1,4 @@
+plugins { id 'application' }
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+repositories { mavenCentral() }
+application { mainClass = 'com.dingco.dispatch.mockvendor.MockVendorServer' }

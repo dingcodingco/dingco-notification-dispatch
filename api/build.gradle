@@ -1,0 +1,28 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.16'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+repositories { mavenCentral() }
+dependencyManagement { imports { mavenBom 'software.amazon.awssdk:bom:2.29.52' } }
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'software.amazon.awssdk:dynamodb'
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:sqs'
+    implementation 'software.amazon.awssdk:url-connection-client'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+configurations.implementation {
+    exclude group: 'software.amazon.awssdk', module: 'apache-client'
+    exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+}
+test {
+    useJUnitPlatform()
+    systemProperty 'lab.endpoint', System.getProperty('lab.endpoint', 'http://localhost:4566')
+    testLogging { events 'passed', 'failed'; exceptionFormat 'full'; showStandardStreams = true }
+}
+bootJar { archiveFileName = 'api.jar' }

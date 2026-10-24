@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Notification Dispatch Platform Lab — 수신자·payload 버킷, 캠페인 테이블, 계획 큐(Planner), 발송 큐 + DLQ(Sender), 멱등 키·결과 원장 테이블.
+
+Parameters:
+  IdempotencyMode:
+    Type: String
+    Default: conditional
+    AllowedValues: [off, check-then-put, conditional]
+  ReportBatchItemFailures:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  VendorMode:
+    Type: String
+    Default: ledger
+    AllowedValues: [ledger, http]
+    Description: ledger = Lambda 안의 모의 발송사(원장 기록), http = mock-vendor 서버 호출
+  VendorUrl:
+    Type: String
+    Default: http://host.docker.internal:8081
+  VendorMaxRps:
+    Type: Number
+    Default: 0
+    Description: Sender 인스턴스당 발송사 초당 요청 수 상한(0=없음)
+  SenderMaxConcurrency:
+    Type: Number
+    Default: 0
+    Description: 이벤트 소스 매핑 MaximumConcurrency(동시 실행 상한). 0 이면 설정하지 않는다. 2 이상
+  SenderEnabled:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  SenderBatchSize:
+    Type: Number
+    Default: 5
+  FairQueue:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+
+Conditions:
+  ReportFailures: !Equals [!Ref ReportBatchItemFailures, 'true']
+  CapConcurrency: !Not [!Equals [!Ref SenderMaxConcurrency, '0']]
+
+Resources:
+  RecipientsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: lab-recipients
+
+  PayloadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: lab-payloads
+
+  CampaignsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: campaigns
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: campaignId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: campaignId, KeyType: HASH }
+
+  DispatchPlannedQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: notify-dispatch-planned
+      VisibilityTimeout: 330           # Planner 제한 시간(300초)보다 길게
+
+  SendRequestedDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: notify-send-requested-dlq
+
+  SendRequestedQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: notify-send-requested
+      VisibilityTimeout: 20            # Sender 제한 시간(15초)보다 길게
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SendRequestedDlq.Arn
+        maxReceiveCount: 3
+
+  IdempotencyTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: idempotency-keys
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: idempotencyKey, AttributeType: S }
+      KeySchema:
+        - { AttributeName: idempotencyKey, KeyType: HASH }
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  SendResultsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: send-results
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: sendId, AttributeType: S }
+        - { AttributeName: idempotencyKey, AttributeType: S }
+        - { AttributeName: campaignId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: sendId, KeyType: HASH }
+      GlobalSecondaryIndexes:          # 발송사 결과 조회용(같은 키로 이미 접수됐나)
+        - IndexName: by-idempotency-key
+          KeySchema:
+            - { AttributeName: idempotencyKey, KeyType: HASH }
+          Projection: { ProjectionType: KEYS_ONLY }
+        - IndexName: by-campaign       # 캠페인별 발송 수 집계용
+          KeySchema:
+            - { AttributeName: campaignId, KeyType: HASH }
+          Projection: { ProjectionType: KEYS_ONLY }
+
+  PlannerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: planner
+      Runtime: java21
+      Handler: com.dingco.dispatch.planner.PlannerHandler::handleRequest
+      CodeUri: functions/planner/build/distributions/planner.zip
+      MemorySize: 1024
+      Timeout: 300
+      Environment:
+        Variables:
+          RECIPIENTS_BUCKET: !Ref RecipientsBucket
+          CAMPAIGNS_TABLE: !Ref CampaignsTable
+          SEND_QUEUE: !GetAtt SendRequestedQueue.QueueName
+          FAIR_QUEUE: !Ref FairQueue
+      Policies:
+        - S3ReadPolicy: { BucketName: !Ref RecipientsBucket }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt SendRequestedQueue.QueueName }
+        - DynamoDBCrudPolicy: { TableName: !Ref CampaignsTable }
+      Events:
+        DispatchPlanned:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DispatchPlannedQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+
+  SenderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: sender
+      Runtime: java21
+      Handler: com.dingco.dispatch.sender.SenderHandler::handleRequest
+      CodeUri: functions/sender/build/distributions/sender.zip
+      MemorySize: 512
+      Timeout: 15
+      Environment:
+        Variables:
+          IDEMPOTENCY_MODE: !Ref IdempotencyMode
+          REPORT_BATCH_ITEM_FAILURES: !Ref ReportBatchItemFailures
+          IDEMPOTENCY_TABLE: !Ref IdempotencyTable
+          LEDGER_TABLE: !Ref SendResultsTable
+          IDEMPOTENCY_LEASE_SECONDS: '30'   # 함수 제한 시간(15초)보다 길게
+          VENDOR_MODE: !Ref VendorMode
+          VENDOR_URL: !Ref VendorUrl
+          VENDOR_MAX_RPS: !Ref VendorMaxRps
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref IdempotencyTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref SendResultsTable }
+        - S3ReadPolicy: { BucketName: !Ref PayloadBucket }
+      Events:
+        SendRequested:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SendRequestedQueue.Arn
+            Enabled: !Ref SenderEnabled
+            BatchSize: !Ref SenderBatchSize
+            MaximumBatchingWindowInSeconds: 5
+            FunctionResponseTypes: !If [ReportFailures, [ReportBatchItemFailures], []]
+            ScalingConfig: !If [CapConcurrency, { MaximumConcurrency: !Ref SenderMaxConcurrency }, !Ref AWS::NoValue]
+
+Outputs:
+  SendRequestedQueueUrl:
+    Value: !Ref SendRequestedQueue
+  DlqUrl:
+    Value: !Ref SendRequestedDlq

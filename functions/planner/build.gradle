@@ -1,0 +1,44 @@
+plugins {
+    id 'java'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
+    implementation 'com.amazonaws:aws-lambda-java-events:3.14.0'
+    implementation platform('software.amazon.awssdk:bom:2.29.52')
+    implementation 'software.amazon.awssdk:dynamodb'
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:sqs'
+    implementation 'software.amazon.awssdk:url-connection-client'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+
+}
+
+configurations.implementation {
+    exclude group: 'software.amazon.awssdk', module: 'apache-client'
+    exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+}
+
+
+// Lambda 배포용 zip: classes + lib/*.jar (shadow 플러그인 없이)
+tasks.register('buildZip', Zip) {
+    archiveFileName = 'planner.zip'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from compileJava
+    from processResources
+    into('lib') {
+        from configurations.runtimeClasspath
+    }
+}
+build.dependsOn buildZip
+

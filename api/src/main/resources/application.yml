@@ -1,0 +1,19 @@
+server:
+  port: 8080
+lab:
+  region: ap-northeast-2
+  endpoint: ${AWS_ENDPOINT_URL:}
+  vendor-url: ${VENDOR_URL:http://localhost:8081}
+  campaigns-table: campaigns
+  ledger-table: send-results
+  recipients-bucket: lab-recipients
+  payloads-bucket: lab-payloads
+  planned-queue: notify-dispatch-planned
+  send-dlq: notify-send-requested-dlq
+  upload-url-ttl-minutes: 15
+logging:
+  file:
+    name: build/api.log
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:--}] %logger{0} - %msg%n"
+    file: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:--}] %logger{0} - %msg%n"

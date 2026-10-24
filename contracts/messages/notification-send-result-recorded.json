@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "notification-send-result-recorded.v1",
+  "title": "NotificationSendResultRecorded v1",
+  "description": "발송사가 접수한 발송 1건의 기록. 이 실습에서는 메시지로 발행하지 않고 결과 원장(send-results 테이블)의 행으로 남긴다.",
+  "type": "object",
+  "required": ["sendId", "campaignId", "tenantId", "recipientId", "idempotencyKey", "traceId", "sentAt"],
+  "properties": {
+    "sendId": { "type": "string" },
+    "campaignId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "recipientId": { "type": "string" },
+    "idempotencyKey": { "type": "string" },
+    "traceId": { "type": "string" },
+    "sentAt": { "type": "string", "format": "date-time" }
+  }
+}

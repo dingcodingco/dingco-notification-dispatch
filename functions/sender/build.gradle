@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
+    implementation 'com.amazonaws:aws-lambda-java-events:3.14.0'
+    implementation platform('software.amazon.awssdk:bom:2.29.52')
+    implementation 'software.amazon.awssdk:dynamodb'
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:url-connection-client'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly 'org.slf4j:slf4j-nop:1.7.36'
+}
+
+configurations.implementation {
+    exclude group: 'software.amazon.awssdk', module: 'apache-client'
+    exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+}
+
+test {
+    useJUnitPlatform()
+    // ./gradlew :functions:sender:test -Didempotency.mode=check-then-put 처럼 구현을 골라 돌린다
+    systemProperty 'idempotency.mode', System.getProperty('idempotency.mode', 'conditional')
+    systemProperty 'lab.endpoint', System.getProperty('lab.endpoint', 'http://localhost:4566')
+    testLogging {
+        events 'passed', 'failed'
+        exceptionFormat 'full'
+        showStandardStreams = true
+    }
+}
+
+// Lambda 배포용 zip: classes + lib/*.jar (shadow 플러그인 없이)
+tasks.register('buildZip', Zip) {
+    archiveFileName = 'sender.zip'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from compileJava
+    from processResources
+    into('lib') {
+        from configurations.runtimeClasspath
+    }
+}
+build.dependsOn buildZip

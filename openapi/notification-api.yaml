@@ -1,0 +1,103 @@
+openapi: 3.0.3
+info:
+  title: Notification Dispatch Platform Lab API
+  version: 1.0.0
+  description: 공개 계약은 아래 3개로 고정한다. 수신자 파일 업로드는 별도 API 없이 POST /campaigns 응답의 uploadUrl 로 한다.
+servers:
+  - url: http://localhost:8080
+paths:
+  /campaigns:
+    post:
+      operationId: createCampaign
+      summary: 캠페인 초안 생성
+      parameters:
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCampaignRequest' }
+      responses:
+        '201':
+          description: 생성됨. uploadUrl 로 수신자 CSV 를 PUT 한다.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateCampaignResponse' }
+        '400': { description: 요청 형식 오류 }
+  /campaigns/{id}/dispatch:
+    post:
+      operationId: dispatchCampaign
+      summary: 발송 시작(접수)
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+        - $ref: '#/components/parameters/TraceId'
+      responses:
+        '202':
+          description: 접수됨. 수신자 수와 상관없이 바로 응답하고, 실제 발송은 비동기로 진행된다.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DispatchResponse' }
+        '404': { description: 캠페인 없음 }
+        '409': { description: 수신자 파일 미업로드 또는 이미 발송을 시작함 }
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      summary: 캠페인 상태·집계 조회
+      parameters:
+        - $ref: '#/components/parameters/CampaignId'
+      responses:
+        '200':
+          description: 상태와 집계
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CampaignStatus' }
+        '404': { description: 캠페인 없음 }
+components:
+  parameters:
+    CampaignId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: cmp-1a2b3c4d }
+    TraceId:
+      name: X-Trace-Id
+      in: header
+      required: false
+      description: 없으면 서버가 만든다. 응답 헤더로 돌려준다.
+      schema: { type: string }
+  schemas:
+    CreateCampaignRequest:
+      type: object
+      required: [tenantId, name, channel, template]
+      properties:
+        tenantId: { type: string, example: tenant-a }
+        name: { type: string }
+        channel: { type: string, enum: [SMS, EMAIL, PUSH] }
+        template: { type: string }
+    CreateCampaignResponse:
+      type: object
+      required: [campaignId, status, uploadUrl, objectKey, expiresAt]
+      properties:
+        campaignId: { type: string }
+        status: { type: string, enum: [DRAFT] }
+        uploadUrl: { type: string, format: uri }
+        objectKey: { type: string }
+        expiresAt: { type: string, format: date-time }
+    DispatchResponse:
+      type: object
+      required: [dispatchJobId, status]
+      properties:
+        dispatchJobId: { type: string }
+        status: { type: string, enum: [QUEUED] }
+    CampaignStatus:
+      type: object
+      required: [status, totalRecipients, pendingCount, sentCount, failedCount, dlqCount, lastUpdatedAt]
+      properties:
+        campaignId: { type: string }
+        status: { type: string, enum: [DRAFT, QUEUED, DISPATCHING, COMPLETED] }
+        totalRecipients: { type: integer, format: int64 }
+        pendingCount: { type: integer, format: int64 }
+        sentCount: { type: integer, format: int64 }
+        failedCount: { type: integer, format: int64 }
+        dlqCount: { type: integer, format: int64, description: 발송 DLQ 전체의 근사 메시지 수(캠페인별 값 아님) }
+        lastUpdatedAt: { type: string, format: date-time }
