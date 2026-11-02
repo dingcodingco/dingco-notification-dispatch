@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "notification-dispatch-planned.v1",
+  "title": "NotificationDispatchPlanned v1",
+  "description": "API 가 발송 접수 때 계획 큐(notify-dispatch-planned)에 넣는 메시지 1건. Planner Lambda 가 소비해 수신자별 NotificationSendRequested 로 펼친다.",
+  "type": "object",
+  "required": ["type", "version", "campaignId", "tenantId", "channel", "objectKey", "payloadRef", "dispatchJobId", "traceId"],
+  "properties": {
+    "type": { "const": "NotificationDispatchPlanned" },
+    "version": { "const": 1 },
+    "campaignId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "channel": { "type": "string", "enum": ["SMS", "EMAIL", "PUSH"] },
+    "objectKey": { "type": "string", "description": "수신자 CSV 의 S3 키(lab-recipients 버킷)" },
+    "payloadRef": { "type": "string", "pattern": "^s3://" },
+    "dispatchJobId": { "type": "string" },
+    "traceId": { "type": "string" }
+  }
+}

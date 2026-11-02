@@ -1,0 +1,7 @@
+# OpenAPI 검증 규칙(npx @redocly/cli lint openapi/notification-api.yaml)
+extends:
+  - recommended
+rules:
+  security-defined: off        # 인증·인가는 이 강의 범위 밖(PRD 범위 제외)
+  no-server-example.com: off   # 로컬 실습 서버(localhost:8080)를 쓴다
+  info-license: off            # 실습용 명세

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "notification-send-requested.v1",
+  "title": "NotificationSendRequested v1",
+  "description": "Planner 가 수신자마다 발송 큐(notify-send-requested)에 넣는 발송 요청 1건. 본문(payload)은 싣지 않고 payloadRef 로 참조한다.",
+  "type": "object",
+  "required": [
+    "type",
+    "version",
+    "campaignId",
+    "tenantId",
+    "recipientId",
+    "channel",
+    "payloadRef",
+    "idempotencyKey",
+    "traceId"
+  ],
+  "properties": {
+    "type": {
+      "const": "NotificationSendRequested"
+    },
+    "version": {
+      "const": 1
+    },
+    "campaignId": {
+      "type": "string"
+    },
+    "tenantId": {
+      "type": "string"
+    },
+    "recipientId": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "SMS",
+        "EMAIL",
+        "PUSH"
+      ]
+    },
+    "payloadRef": {
+      "type": "string",
+      "pattern": "^s3://"
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "같은 업무 요청이면 같은 값. 발송 결과 1회 판정의 기준"
+    },
+    "traceId": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

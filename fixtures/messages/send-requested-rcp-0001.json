@@ -1,0 +1,1 @@
+{"campaignId": "cmp-0001", "tenantId": "tenant-a", "recipientId": "rcp-0001", "channel": "SMS", "payloadRef": "s3://lab-payloads/cmp-0001/rcp-0001.json", "idempotencyKey": "tenant-a:cmp-0001:rcp-0001:SMS", "traceId": "trace-rcp-0001"}
